@@ -7,7 +7,12 @@ async function main() {
   await prisma.user.upsert({
     where: { email: process.env.SUPER_ADMIN_EMAIL ?? 'superadmin@example.com' },
     update: { role: Role.SUPER_ADMIN, status: 'ACTIVE' },
-    create: { name: 'Super Admin', email: process.env.SUPER_ADMIN_EMAIL ?? 'superadmin@example.com', passwordHash, role: Role.SUPER_ADMIN },
+    create: {
+      name: 'Super Admin',
+      email: process.env.SUPER_ADMIN_EMAIL ?? 'superadmin@example.com',
+      passwordHash,
+      role: Role.SUPER_ADMIN,
+    },
   });
 }
 main().finally(() => prisma.$disconnect());
