@@ -29,6 +29,20 @@ app.get('/health', (_req,res)=>send(res,{status:'ok',service:'mcq-exam-platform-
 app.post('/api/v1/auth/register', asyncRoute(async (req,res)=>{ const input=z.object({name:z.string().min(2),email:z.string().email(),password:z.string().min(8)}).parse(req.body); const passwordHash=await bcrypt.hash(input.password,12); const user=await prisma.user.create({data:{...input,passwordHash},select:{id:true,name:true,email:true,role:true}}); send(res,user,201); }));
 app.post('/api/v1/auth/login', asyncRoute(async (req,res)=>{ const input=z.object({email:z.string().email(),password:z.string()}).parse(req.body); const user=await prisma.user.findUnique({where:{email:input.email}}); if(!user || user.status!=='ACTIVE' || !(await bcrypt.compare(input.password,user.passwordHash))) return fail(res,'Invalid credentials',401); const token=jwt.sign({sub:user.id,role:user.role,email:user.email},secret,{expiresIn:(process.env.JWT_ACCESS_EXPIRES_IN??'15m') as jwt.SignOptions['expiresIn']}); send(res,{accessToken:token,user:{id:user.id,name:user.name,email:user.email,role:user.role}}); }));
 app.get('/api/v1/auth/me',auth(),asyncRoute(async(req,res)=>send(res,await prisma.user.findUnique({where:{id:req.user!.sub},select:{id:true,name:true,email:true,role:true,status:true}}))));
+app.get('/api/v1/students/me/profile',auth([Role.STUDENT]),asyncRoute(async(req,res)=>{
+  const profile=await prisma.user.findUnique({where:{id:req.user!.sub},select:{id:true,name:true,email:true,role:true,status:true,createdAt:true,updatedAt:true}});
+  if(!profile)return fail(res,'Profile not found',404); send(res,profile);
+}));
+app.patch('/api/v1/students/me/profile',auth([Role.STUDENT]),asyncRoute(async(req,res)=>{
+  const input=z.object({name:z.string().min(2).max(100).optional(),email:z.string().email().optional()}).strict().refine(v=>Object.keys(v).length>0,{message:'At least one profile field is required'}).parse(req.body);
+  if(input.email){const existing=await prisma.user.findFirst({where:{email:input.email,id:{not:req.user!.sub}}});if(existing)return fail(res,'Email is already in use',409);}
+  const profile=await prisma.user.update({where:{id:req.user!.sub},data:input,select:{id:true,name:true,email:true,role:true,status:true,updatedAt:true}}); send(res,profile);
+}));
+app.patch('/api/v1/students/me/password',auth([Role.STUDENT]),asyncRoute(async(req,res)=>{
+  const input=z.object({currentPassword:z.string().min(1),newPassword:z.string().min(8).max(128)}).parse(req.body);
+  const user=await prisma.user.findUnique({where:{id:req.user!.sub}}); if(!user || !(await bcrypt.compare(input.currentPassword,user.passwordHash)))return fail(res,'Current password is incorrect',400);
+  await prisma.user.update({where:{id:user.id},data:{passwordHash:await bcrypt.hash(input.newPassword,12)}}); send(res,{message:'Password updated successfully'});
+}));
 
 app.post('/api/v1/questions',auth([Role.ADMIN,Role.SUPER_ADMIN]),asyncRoute(async(req,res)=>{ const input=questionInput.parse(req.body); send(res,await prisma.question.create({data:{...input,createdById:req.user!.sub}}),201); }));
 app.get('/api/v1/questions',auth([Role.ADMIN,Role.SUPER_ADMIN]),asyncRoute(async(req,res)=>{ const page=Math.max(Number(req.query.page??1),1),limit=Math.min(Math.max(Number(req.query.limit??20),1),100); send(res,{items:await prisma.question.findMany({skip:(page-1)*limit,take:limit,orderBy:{createdAt:'desc'},select:{id:true,prompt:true,optionA:true,optionB:true,optionC:true,optionD:true,correctAnswer:true,explanation:true}}),page,limit}); }));
@@ -51,4 +65,5 @@ app.post('/api/v1/admin/users',auth([Role.SUPER_ADMIN]),asyncRoute(async(req,res
 app.use((err:unknown,_req:Request,res:Response,_next:NextFunction)=>{ if(err instanceof z.ZodError)return fail(res,'Validation failed',422); console.error(err); return fail(res,'Internal server error',500); });
 if(process.env.NODE_ENV!=='test') app.listen(port,()=>console.log(`MCQ API listening on ${port}`));
 export { app, prisma };
+
 
