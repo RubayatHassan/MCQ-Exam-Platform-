@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  STUDENT
+}
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+enum ExamStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  AUTO_SUBMITTED
+}
+model User {
+  id String @id @default(cuid())
+  name String
+  email String @unique
+  passwordHash String
+  role Role @default(STUDENT)
+  status UserStatus @default(ACTIVE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  exams Exam[] @relation("ExamCreator")
+  attempts Attempt[]
+  auditLogs AuditLog[]
+  questions Question[]
+  @@index([role, status])
+}
+model Exam {
+  id String @id @default(cuid())
+  title String
+  description String?
+  instructions String?
+  marksPerQuestion Int @default(1)
+  negativeMarks Float @default(0)
+  durationMinutes Int
+  startsAt DateTime?
+  endsAt DateTime?
+  status ExamStatus @default(DRAFT)
+  createdById String
+  createdBy User @relation("ExamCreator", fields: [createdById], references: [id])
+  questions ExamQuestion[]
+  attempts Attempt[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([status, startsAt, endsAt])
+}
+model Question {
+  id String @id @default(cuid())
+  prompt String
+  optionA String
+  optionB String
+  optionC String
+  optionD String
+  correctAnswer String
+  explanation String?
+  createdById String
+  createdBy User @relation(fields: [createdById], references: [id])
+  exams ExamQuestion[]
+  answers AttemptAnswer[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+model ExamQuestion {
+  examId String
+  questionId String
+  order Int
+  exam Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id])
+  @@id([examId, questionId])
+  @@unique([examId, order])
+}
+model Attempt {
+  id String @id @default(cuid())
+  examId String
+  studentId String
+  status AttemptStatus @default(IN_PROGRESS)
+  startedAt DateTime @default(now())
+  submittedAt DateTime?
+  score Float @default(0)
+  totalMarks Float @default(0)
+  exam Exam @relation(fields: [examId], references: [id])
+  student User @relation(fields: [studentId], references: [id])
+  answers AttemptAnswer[]
+  @@unique([examId, studentId])
+  @@index([examId, status, score])
+}
+model AttemptAnswer {
+  id String @id @default(cuid())
+  attemptId String
+  questionId String
+  answer String?
+  isCorrect Boolean @default(false)
+  marks Float @default(0)
+  attempt Attempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id])
+  @@unique([attemptId, questionId])
+}
+model AuditLog {
+  id String @id @default(cuid())
+  actorId String?
+  action String
+  entity String
+  entityId String?
+  metadata Json?
+  createdAt DateTime @default(now())
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  @@index([entity, entityId, createdAt])
+}
+
+
