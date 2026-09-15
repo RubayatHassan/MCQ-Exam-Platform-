@@ -1,15 +1,18 @@
 import { Router } from 'express';
 import { PrismaClient, Role, ExamStatus, AttemptStatus } from '@prisma/client';
 import { z } from 'zod';
-import { requireAuth } from '../../middleware/auth.js';
-import { asyncHandler, ok, badRequest } from '../../lib/http.js';
+import { auth as requireAuth } from '../../middleware/checkAuth.js';
+import { catchAsync } from '../../utils/catchAsync.js';
+import { sendResponse } from '../../utils/sendResponse.js';
+import { prisma } from '../../lib/prisma.js';
 export const assessmentRouter = Router();
 const router = assessmentRouter;
-const prisma = new PrismaClient();
-const auth = requireAuth;
-const asyncRoute = asyncHandler;
-const send = ok;
-const fail = badRequest;
+
+const auth = (roles?: Role[]) => requireAuth(...(roles ?? []));
+const asyncRoute = catchAsync;
+const send = sendResponse;
+const fail = (res: import('express').Response, message: string, status = 400) =>
+  res.status(status).json({ success: false, message });
 const idParam = z.object({ id: z.string().min(1) });
 const questionInput = z.object({
   prompt: z.string().min(1),
