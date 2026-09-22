@@ -32,6 +32,7 @@ const examInput = z.object({
   durationMinutes: z.number().int().positive(),
   startsAt: z.string().datetime().optional(),
   endsAt: z.string().datetime().optional(),
+  questionIds: z.array(z.string().min(1)).min(1).max(50),
 });
 router.post(
   '/api/v1/questions',
@@ -78,18 +79,26 @@ router.post(
   auth([Role.ADMIN, Role.SUPER_ADMIN]),
   asyncRoute(async (req, res) => {
     const input = examInput.parse(req.body);
-    send(
-      res,
-      await prisma.exam.create({
-        data: {
-          ...input,
-          startsAt: input.startsAt ? new Date(input.startsAt) : undefined,
-          endsAt: input.endsAt ? new Date(input.endsAt) : undefined,
-          createdById: req.user!.sub,
+    const { questionIds, ...examData } = input;
+    const questions = await prisma.question.findMany({
+      where: { id: { in: questionIds } },
+      select: { id: true },
+    });
+    if (questions.length !== questionIds.length)
+      return fail(res, 'One or more questions were not found', 422);
+    const exam = await prisma.exam.create({
+      data: {
+        ...examData,
+        startsAt: input.startsAt ? new Date(input.startsAt) : undefined,
+        endsAt: input.endsAt ? new Date(input.endsAt) : undefined,
+        createdById: req.user!.sub,
+        questions: {
+          create: questionIds.map((questionId, index) => ({ questionId, order: index + 1 })),
         },
-      }),
-      201,
-    );
+      },
+      include: { questions: { orderBy: { order: 'asc' } } },
+    });
+    send(res, exam, 201);
   }),
 );
 router.get(
