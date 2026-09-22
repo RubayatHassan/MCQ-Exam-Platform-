@@ -97,10 +97,11 @@ router.get(
   auth(),
   asyncRoute(async (req, res) => {
     const status = req.query.status as ExamStatus | undefined;
+    const where = req.user!.role === Role.STUDENT ? { status: ExamStatus.PUBLISHED } : { status };
     send(
       res,
       await prisma.exam.findMany({
-        where: { status },
+        where,
         orderBy: { createdAt: 'desc' },
         include: { _count: { select: { questions: true, attempts: true } } },
       }),
