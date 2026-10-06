@@ -46,6 +46,19 @@ router.post(
     );
   }),
 );
+router.post(
+  '/api/v1/questions/bulk',
+  auth([Role.ADMIN, Role.SUPER_ADMIN]),
+  asyncRoute(async (req, res) => {
+    const input = z.object({ questions: z.array(questionInput).min(1).max(100) }).parse(req.body);
+    const created = await prisma.$transaction(
+      input.questions.map((question) =>
+        prisma.question.create({ data: { ...question, createdById: req.user!.sub } }),
+      ),
+    );
+    send(res, { count: created.length, questions: created }, 201);
+  }),
+);
 router.get(
   '/api/v1/questions',
   auth([Role.ADMIN, Role.SUPER_ADMIN]),
